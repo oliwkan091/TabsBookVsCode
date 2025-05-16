@@ -1,6 +1,6 @@
 {
-  "name": "test1",
-  "displayName": "test1",
+  "name": "HoldMyTabsForVsCode",
+  "displayName": "HoldMyTabsForVsCode",
   "description": "",
   "version": "0.0.1",
   "engines": {
@@ -14,12 +14,20 @@
   "contributes": {
      "commands": [
       {
-        "command": "extension.saveTabs",
-        "title": "Save Open Tabs"
+        "command": "extension.saveTabsAs",
+        "title": "Save Open Tabs As..."
       },
       {
         "command": "extension.restoreTabs",
-        "title": "Restore Saved Tabs"
+        "title": "Restore Saved Tabs..."
+      },
+      {
+        "command": "extension.deleteTabs",
+        "title": "Delete Saved Tab Sets..."
+      },
+      {
+        "command": "extension.listTabs",
+        "title": "List Saved Tab Sets"
       }
     ]
   },
