@@ -1,0 +1,14 @@
+Exporting exporting without publishing it 
+    Install library for exporting
+        npm install --global vsce
+
+    Crete export configuration and export
+        vsce package
+            It will be exported to the root directory of project with the file extension .vsix
+            If it fails saying "Make sure to edit the README.md file before you package or publish your extension." 
+                just delete the README it created and reinvoke command, then it will ask if you want to proceed 
+                without information necessary to publish, just accept all.
+
+
+Installing from .vsix file
+    code --install-extension <PATH_TO_FILE>.vsix
