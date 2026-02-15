@@ -3,13 +3,13 @@
   "displayName": "TabsBookVsCode",
   "publisher": "oliwkan091",
   "id": "my-first-extension",
-  "description": "Tabs Book allows you to take a 'snapshot' of your currently open document tabs—preserving their exact order and pinned status—and restore them instantly at a later time. Whether you are switching between feature branches, investigating a bug, or reviewing code, you can now save your workspace context with a custom name and return to it in seconds.",
+  "description": "Tabs Book allows you to take a 'snapshot' of your currently open document tabs-preserving their exact order and pinned status-and restore them instantly at a later time. Whether you are switching between feature branches, investigating a bug, or reviewing code, you can now save your workspace context with a custom name and return to it in seconds.",
   "icon": "resources/icon90.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/oliwkan091/TabsBookVsCode"
   },
-  "version": "1.0.1",
+  "version": "1.0.2",
   "engines": {
     "vscode": "^1.99.0"
   },
