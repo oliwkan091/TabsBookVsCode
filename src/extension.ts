@@ -1,121 +1,147 @@
 import * as vscode from 'vscode';
 
-//Mapping between invoke command and the function is in the package.json file
-
 interface SavedTab {
-    uri: string; // Save path to tab
-    isPinned: boolean; // Check if tab is pinned
+    uri: string;
+    isPinned: boolean;
 }
 
-// structure to save tabs
-// string - is a name that was given by user during save 
-// SavedTab[] - are the extracted tabs
-type TabCollections = Record<string, SavedTab[]>;
+interface SavedTabSet {
+    tabs: SavedTab[];
+    workspacePath: string;
+}
 
-function makeTimestamp(): string {
-    const now = new Date();
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}` +
-           `:${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+type TabCollections = Record<string, SavedTabSet>;
+
+function getCurrentWorkspaceRoot(): string | null {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) {
+        return null;
+    }
+    //First folder identifies the workspace
+    return folders[0].uri.toString();
 }
 
 export function activate(context: vscode.ExtensionContext) {
+
+    //Save Tabs
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.saveTabsAs', async () => {
-    // Gather current text‐editor tabs
-    const tabs = vscode.window.tabGroups.all
-      .flatMap(g => g.tabs)
-      .filter(t => t.input instanceof vscode.TabInputText) as vscode.Tab[];
-
-    // If none, warn and return
-    if (tabs.length === 0) {
-      vscode.window.showWarningMessage('No open tabs to save.');
-      return;
-    }
-
-    // Name save group
-    const name = await vscode.window.showInputBox({
-      prompt: 'Enter a name for this set of tabs',
-      ignoreFocusOut: true,
-      validateInput: (value) => {
-        if (!value.trim()) {
-          return 'Name cannot be empty';
-        }
-		// Take all previously saved names
-        const all: TabCollections = context.globalState.get('tabCollections', {});
-        return all[value] ? `A set named "${value}" already exists` : null;
-      }
-    });
-    if (!name) { return; }
-
-    const saved: SavedTab[] = tabs.map(t => ({
-      uri: (t.input as vscode.TabInputText).uri.toString(),
-      isPinned: t.isPinned ?? false
-    }));
-
-    // Persist under that name
-    const all: TabCollections = context.globalState.get('tabCollections', {});
-    all[name] = saved;
-    await context.globalState.update('tabCollections', all);
-
-    vscode.window.showInformationMessage(`Tabs saved as “${name}”`);
-  }));
-
-    context.subscriptions.push(
-         vscode.commands.registerCommand('extension.restoreTabs', async () => {
-            const all: TabCollections = context.globalState.get('tabCollections', {});
-            const names = Object.keys(all);
-            if (names.length === 0) {
-                vscode.window.showWarningMessage('No saved tab sets.');
+            const currentWorkspace = getCurrentWorkspaceRoot();
+            if (!currentWorkspace) {
+                vscode.window.showErrorMessage('You must have a folder opened to save tabs contextually.');
                 return;
             }
+
+            const tabs = vscode.window.tabGroups.all
+                .flatMap(g => g.tabs)
+                .filter(t => t.input instanceof vscode.TabInputText) as vscode.Tab[];
+
+            if (tabs.length === 0) {
+                vscode.window.showWarningMessage('No open tabs to save.');
+                return;
+            }
+
+            const name = await vscode.window.showInputBox({
+                prompt: 'Enter a name for this set of tabs',
+                ignoreFocusOut: true,
+                validateInput: (value) => {
+                    if (!value.trim()) {
+                        return 'Name cannot be empty';
+                    }
+                    const all: TabCollections = context.globalState.get('tabCollections', {});
+                    if (all[value] && all[value].workspacePath === currentWorkspace) {
+                        return `A set named "${value}" already exists in this workspace`;
+                    }
+                    return null;
+                }
+            });
+            if (!name) { return; }
+
+            const savedTabs: SavedTab[] = tabs.map(t => ({
+                uri: (t.input as vscode.TabInputText).uri.toString(),
+                isPinned: t.isPinned ?? false
+            }));
+
+            const all: TabCollections = context.globalState.get('tabCollections', {});
+            
+            all[name] = {
+                tabs: savedTabs,
+                workspacePath: currentWorkspace
+            };
+            
+            await context.globalState.update('tabCollections', all);
+            vscode.window.showInformationMessage(`Tabs saved as “${name}” for current workspace.`);
+        })
+    );
+
+    //Restore tabs
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.restoreTabs', async () => {
+            const currentWorkspace = getCurrentWorkspaceRoot();
+            if (!currentWorkspace) {
+                vscode.window.showErrorMessage('Open a folder to see its saved tabs.');
+                return;
+            }
+
+            const all: TabCollections = context.globalState.get('tabCollections', {});
+            
+            const names = Object.keys(all).filter(key => {
+                const item = all[key];
+                return item && item.workspacePath === currentWorkspace;
+            });
+
+            if (names.length === 0) {
+                vscode.window.showWarningMessage('No saved tab sets for this workspace.');
+                return;
+            }
+
             const pick = await vscode.window.showQuickPick(names, { placeHolder: 'Select a set to restore' });
             if (!pick) { return; }
 
-            const should = await vscode.window.showWarningMessage(
-                `Restore tabs from “${pick}”?`,
-                { modal: true },
-                'Restore', 'Cancel'
-            );
-            if (should !== 'Restore') { return; }
+            const savedSet = all[pick]; 
+            const savedTabs = savedSet.tabs;
 
-            const savedTabs = all[pick]!;
             const pinned = savedTabs.filter(t => t.isPinned);
             const unpinned = savedTabs.filter(t => !t.isPinned);
 
-			// Restore tabs are devided to 3 groups. Because there is no way to pin the tab by api, 
-			// all pinned tabs are opened as firsts, with the order there way saved, then there is an 
-			// empty tab and after it there are the unpinned tabs 
-
-            // 1. pinned in background
             for (const tab of pinned) {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(tab.uri));
-                await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true });
+                try {
+                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(tab.uri));
+                    await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
+                    await vscode.commands.executeCommand('workbench.action.pinEditor');
+                } catch (e) {
+                    console.error(`Could not open ${tab.uri}`);
+                }
             }
 
-            // 2. a timestamped “restored” divider
-            const ts = makeTimestamp();
-            const title = `restored ${ts}`;
-            const uri = vscode.Uri.parse(`untitled:${title}`);
-            const dividerDoc = await vscode.workspace.openTextDocument(uri);
-            await vscode.window.showTextDocument(dividerDoc, { preview: false });
-
-            // 3. unpinned normally
             for (const tab of unpinned) {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(tab.uri));
-                await vscode.window.showTextDocument(doc, { preview: false });
+                try {
+                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(tab.uri));
+                    await vscode.window.showTextDocument(doc, { preview: false });
+                } catch (e) {
+                    console.error(`Could not open ${tab.uri}`);
+                }
             }
 
             vscode.window.showInformationMessage(`Tabs restored from “${pick}”`);
         })
     );
 
+    //Delete tabs
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.deleteTabs', async () => {
+            const currentWorkspace = getCurrentWorkspaceRoot();
+            if (!currentWorkspace) {
+                vscode.window.showErrorMessage('Open a folder to manage saved tabs.');
+                return;
+            }
+
             const all: TabCollections = context.globalState.get('tabCollections', {});
-            const names = Object.keys(all);
+            
+            const names = Object.keys(all).filter(key => all[key]?.workspacePath === currentWorkspace);
+
             if (names.length === 0) {
-                vscode.window.showWarningMessage('No saved tab sets to delete.');
+                vscode.window.showWarningMessage('No saved tab sets to delete in this workspace.');
                 return;
             }
 
@@ -124,61 +150,17 @@ export function activate(context: vscode.ExtensionContext) {
             });
             if (!pick) { return; }
 
-            // confirmation
             const should = await vscode.window.showWarningMessage(
                 `Delete saved tabs “${pick}”?`,
                 { modal: true },
-                'Delete',
-                'Cancel'
+                'Delete', 'Cancel'
             );
-            if (should !== 'Delete') { return; }
 
-            delete all[pick];
-            await context.globalState.update('tabCollections', all);
-            vscode.window.showInformationMessage(`Deleted saved tabs “${pick}”`);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('extension.listTabs', async () => {
-            const all: TabCollections = context.globalState.get('tabCollections', {});
-            const names = Object.keys(all);
-            if (names.length === 0) {
-                vscode.window.showInformationMessage('No saved tab sets.');
-                return;
+            if (should === 'Delete') {
+                delete all[pick];
+                await context.globalState.update('tabCollections', all);
+                vscode.window.showInformationMessage(`Deleted saved tabs “${pick}”`);
             }
-
-            const pick = await vscode.window.showQuickPick(names, {
-                placeHolder: 'Select a saved tab-set to restore'
-            });
-            if (!pick) { return; }
-
-            const should = await vscode.window.showWarningMessage(
-                `Restore tabs from “${pick}”?`,
-                { modal: true },
-                'Restore',
-                'Cancel'
-            );
-            if (should !== 'Restore') { return; }
-
-            const savedTabs = all[pick]!;
-            const pinned = savedTabs.filter(t => t.isPinned);
-            const unpinned = savedTabs.filter(t => !t.isPinned);
-
-            for (const tab of pinned) {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(tab.uri));
-                await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true });
-            }
-
-            const empty = await vscode.workspace.openTextDocument({ content: '', language: 'plaintext' });
-            await vscode.window.showTextDocument(empty, { preview: false });
-
-            for (const tab of unpinned) {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(tab.uri));
-                await vscode.window.showTextDocument(doc, { preview: false });
-            }
-
-            vscode.window.showInformationMessage(`Tabs restored from “${pick}”`);
         })
     );
 }

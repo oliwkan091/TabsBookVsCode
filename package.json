@@ -9,7 +9,7 @@
     "type": "git",
     "url": "https://github.com/oliwkan091/TabsBookVsCode"
   },
-  "version": "0.0.2",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.99.0"
   },
@@ -31,10 +31,6 @@
       {
         "command": "extension.deleteTabs",
         "title": "Delete Saved Tab Sets..."
-      },
-      {
-        "command": "extension.listTabs",
-        "title": "List Saved Tab Sets"
       }
     ]
   },
