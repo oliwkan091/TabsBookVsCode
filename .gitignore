@@ -2,3 +2,6 @@ out
 dist
 node_modules
 .vscode-test/
+.vscode/
+.vscodeignore
+.vscode-test.mjs
